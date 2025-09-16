@@ -953,6 +953,7 @@ enum reg_class
   RCLASS_FPR,
   RCLASS_VECR,
   RCLASS_VECM,
+  RCLASS_MPR,
   RCLASS_MAX,
 
   RCLASS_CSR
@@ -1771,6 +1772,23 @@ validate_riscv_insn (const struct riscv_opcode *opc, int length)
 		    goto unknown_validate_operand;
 		}
 		break;
+#ifdef ESPERANTO_ENCODING_H
+	    case 'e': /* Vendor-specific (Esperanto) operands. */
+	      switch (*++oparg)
+		{
+		case 'M':	USE_BITS (OP_MASK_RD,		OP_SH_RD);	break;
+		case 'N':	USE_BITS (OP_MASK_RS1,		OP_SH_RS1);	break;
+		case 'n':	USE_BITS (OP_MASK_RS2,		OP_SH_RS2);	break;
+		case 'g':	used_bits |= ENCODE_GDTYPE_IMM (-1U); break;
+		case 'b':	USE_BITS (OP_MASK_FMV_IMM,	OP_SH_FMV_IMM);	break;
+		case 'f':	used_bits |= ENCODE_FMVMTYPE_IMM (-1U); break;
+		case 'y':	used_bits |= ENCODE_FRITYPE_IMM (-1U); break;
+		case 'Y':	used_bits |= ENCODE_MPCRTYPE_IMM (-1U); break;
+		default:
+		    goto unknown_validate_operand;
+		}
+		break;
+#endif
 	    default:
 	      goto unknown_validate_operand;
 	    }
@@ -1917,6 +1935,10 @@ md_begin (void)
   hash_reg_names (RCLASS_FPR, riscv_fpr_names_abi, NFPR);
   hash_reg_names (RCLASS_VECR, riscv_vecr_names_numeric, NVECR);
   hash_reg_names (RCLASS_VECM, riscv_vecm_names_numeric, NVECM);
+#ifdef ESPERANTO_ENCODING_H
+  hash_reg_names (RCLASS_MPR, riscv_mpr_names_numeric, NMPR);
+  hash_reg_names (RCLASS_MPR, riscv_mpr_names_abi, NMPR);
+#endif
   /* Add "fp" as an alias for "s0".  */
   hash_reg_name (RCLASS_GPR, "fp", 8);
 
@@ -4139,7 +4161,86 @@ riscv_ip (char *str, struct riscv_cl_insn *ip, expressionS *imm_expr,
 			goto unknown_riscv_ip_operand;
 		    }
 		  break;
+#ifdef ESPERANTO_ENCODING_H
+		case 'e': /* Vendor-specific (Esperanto) operands. */
+		  switch (*++oparg)
+		    {
+		    case 'g':		/* Graphics Downconvert shift amount, 0 - 31.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long) imm_expr->X_add_number > 31)
+			as_bad (_("Improper immediate amount (%lu)"),
+				(unsigned long) imm_expr->X_add_number);
+		      INSERT_OPERAND (GDIMM, *ip, ((imm_expr->X_add_number&0x18)<<10)|(imm_expr->X_add_number&0x7));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
 
+		    case 'b':		/* FMOV shift amount, 0 - 7.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long) imm_expr->X_add_number > 7)
+			as_bad (_("Improper immediate amount (%lu)"),
+				(unsigned long) imm_expr->X_add_number);
+		      INSERT_OPERAND (FMV_IMM, *ip, imm_expr->X_add_number);
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case 'f':		/* MOV.M.X / SWIZZ shift amount, 0 - 255.  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long) imm_expr->X_add_number > 255)
+			as_bad (_("Improper immediate amount (%lu)"),
+				(unsigned long) imm_expr->X_add_number);
+		      INSERT_OPERAND (FMVM_IMM, *ip, ((imm_expr->X_add_number&0xf8)<<5)|(imm_expr->X_add_number&0x7));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case 'y':		/* FADDI_PI, FANDI_PI, -512 - 511  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if (imm_expr->X_add_number < -512
+			  || imm_expr->X_add_number >= 512)
+			as_bad (_("Improper immediate amount (%ld)"),
+				(long) imm_expr->X_add_number);
+		      INSERT_OPERAND (FRI_IMM, *ip, ((imm_expr->X_add_number&0x3e0)<<2)|(imm_expr->X_add_number&0x1f));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case 'Y':		/* MASKPOPC_RAS, 0 - 15  */
+		      my_getExpression (imm_expr, asarg);
+		      check_absolute_expr (ip, imm_expr, FALSE);
+		      if ((unsigned long) imm_expr->X_add_number > 15)
+			as_bad (_("Improper immediate amount (%lu)"),
+				(unsigned long) imm_expr->X_add_number);
+		      INSERT_OPERAND (MPCR_IMM, *ip, ((imm_expr->X_add_number&0x0c)<<3)|(imm_expr->X_add_number&0x03));
+		      imm_expr->X_op = O_absent;
+		      asarg = expr_parse_end;
+		      continue;
+
+		    case 'M':		/* Floating point mask rd.  */
+		      if (reg_lookup (&asarg, RCLASS_MPR, &regno))
+			INSERT_OPERAND (RD, *ip, regno);
+		      continue;
+
+		    case 'N':		/* Floating point mask rs1.  */
+		      if (reg_lookup (&asarg, RCLASS_MPR, &regno))
+			INSERT_OPERAND (RS1, *ip, regno);
+		      continue;
+
+		    case 'n':		/* Floating point mask rs2.  */
+		      if (reg_lookup (&asarg, RCLASS_MPR, &regno))
+			INSERT_OPERAND (RS2, *ip, regno);
+		      continue;
+
+		    default:
+		      goto unknown_riscv_ip_operand;
+		    }
+		  break;
+#endif
 		case 's': /* Vendor-specific (SiFive) operands.  */
 #define UIMM_BITFIELD_VAL(S, E) (1 << ((E) - (S) + 1))
 #define ENCODE_UIMM_BIT_FIELD(NAME, IP, EXPR, RELOC, ASARG, \
@@ -5537,6 +5638,11 @@ tc_riscv_regname_to_dw2regnum (char *regname)
 
   if ((reg = reg_lookup_internal (regname, RCLASS_VECR)) >= 0)
     return reg + 96;
+
+#ifdef ESPERANTO_ENCODING_H
+  if ((reg = reg_lookup_internal (regname, RCLASS_MPR)) >= 0)
+    return reg + 8;
+#endif
 
   /* CSRs are numbered 4096 -> 8191.  */
   if ((reg = reg_lookup_internal (regname, RCLASS_CSR)) >= 0)

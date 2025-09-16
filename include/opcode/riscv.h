@@ -33,10 +33,16 @@ static inline unsigned int riscv_insn_length (insn_t insn)
     return 2;
   if ((insn & 0x1f) != 0x1f) /* 32-bit instructions.  */
     return 4;
+#ifdef ESPERANTO_ENCODING_H
+  /* 32-bit Esperanto extensions are in the 48-bit/64-bit space */
+  if ((insn & 0x3f) == 0x1f || (insn & 0x7f) == 0x3f)
+    return 4;
+#else
   if ((insn & 0x3f) == 0x1f) /* 48-bit instructions.  */
     return 6;
   if ((insn & 0x7f) == 0x3f) /* 64-bit instructions.  */
     return 8;
+#endif
   /* 80- ... 176-bit instructions.  */
   if ((insn & 0x7f) == 0x7f && (insn & 0x7000) != 0x7000)
     return 10 + ((insn >> 11) & 0xe);
@@ -97,6 +103,18 @@ static inline unsigned int riscv_insn_length (insn_t insn)
   ((RV_X(x, 3, 2) << 1) | (RV_X(x, 10, 2) << 3) | (RV_X(x, 2, 1) << 5) | (RV_X(x, 5, 2) << 6) | (-RV_X(x, 12, 1) << 8))
 #define EXTRACT_CJTYPE_IMM(x) \
   ((RV_X(x, 3, 3) << 1) | (RV_X(x, 11, 1) << 4) | (RV_X(x, 2, 1) << 5) | (RV_X(x, 7, 1) << 6) | (RV_X(x, 6, 1) << 7) | (RV_X(x, 9, 2) << 8) | (RV_X(x, 8, 1) << 10) | (-RV_X(x, 12, 1) << 11))
+
+#ifdef ESPERANTO_ENCODING_H
+#define EXTRACT_GDTYPE_IMM(x) \
+  (RV_X(x, 12, 3) | (RV_X(x, 25, 2) << 3))
+#define EXTRACT_FMVMTYPE_IMM(x) \
+  (RV_X(x, 12, 3) | (RV_X(x, 20, 5) << 3))
+#define EXTRACT_FRITYPE_IMM(x) \
+  (RV_X(x, 20, 5) | (RV_X(x, 27, 5)<< 5))
+#define EXTRACT_MPCRTYPE_IMM(x) \
+  (RV_X(x, 18, 2) | (RV_X(x, 23, 2) << 2))
+#endif
+
 #define EXTRACT_RVV_VI_IMM(x) \
   (RV_X(x, 15, 5) | (-RV_X(x, 19, 1) << 5))
 #define EXTRACT_RVV_VI_UIMM(x) \
@@ -219,6 +237,17 @@ static inline unsigned int riscv_insn_length (insn_t insn)
 #define ENCODE_MIPS_SDP_IMM(x) \
   ((RV_X(x, 5, 2) << 25) | (RV_X(x, 3, 2) << 10))
 
+#ifdef ESPERANTO_ENCODING_H
+#define ENCODE_GDTYPE_IMM(x) \
+  ((RV_X(x, 0, 3) << 12) | (RV_X(x, 3, 2) << 25))
+#define ENCODE_FMVMTYPE_IMM(x) \
+  ((RV_X(x, 0, 3) << 12) | (RV_X(x, 3, 5) << 20))
+#define ENCODE_FRITYPE_IMM(x) \
+  ((RV_X(x, 0, 5) << 20) | (RV_X(x, 5, 5) << 27))
+#define ENCODE_MPCRTYPE_IMM(x) \
+  ((RV_X(x, 0, 2) << 18) | (RV_X(x, 2, 2) << 23))
+#endif
+
 #define VALID_ITYPE_IMM(x) (EXTRACT_ITYPE_IMM(ENCODE_ITYPE_IMM(x)) == (x))
 #define VALID_STYPE_IMM(x) (EXTRACT_STYPE_IMM(ENCODE_STYPE_IMM(x)) == (x))
 #define VALID_BTYPE_IMM(x) (EXTRACT_BTYPE_IMM(ENCODE_BTYPE_IMM(x)) == (x))
@@ -246,6 +275,13 @@ static inline unsigned int riscv_insn_length (insn_t insn)
 #define VALID_ZCB_BYTE_UIMM(x) (EXTRACT_ZCB_BYTE_UIMM(ENCODE_ZCB_BYTE_UIMM(x)) == (x))
 #define VALID_ZCB_HALFWORD_UIMM(x) (EXTRACT_ZCB_HALFWORD_UIMM(ENCODE_ZCB_HALFWORD_UIMM(x)) == (x))
 #define VALID_ZCMP_SPIMM(x) (EXTRACT_ZCMP_SPIMM(ENCODE_ZCMP_SPIMM(x)) == (x))
+
+#ifdef ESPERANTO_ENCODING_H
+#define VALID_GDTYPE_IMM(x) (EXTRACT_GDTYPE_IMM(ENCODE_GDTYPE_IMM(x)) == (x))
+#define VALID_FMVMTYPE_IMM(x) (EXTRACT_FMVMTYPE_IMM(ENCODE_FMVMTYPE_IMM(x)) == (x))
+#define VALID_FRITYPE_IMM(x) (EXTRACT_FRITYPE_IMM(ENCODE_FRITYPE_IMM(x)) == (x))
+#define VALID_MPCRTYPE_IMM(x) (EXTRACT_MPCRTYPE_IMM(ENCODE_MPCRTYPE_IMM(x)) == (x))
+#endif
 
 #define RISCV_RTYPE(insn, rd, rs1, rs2) \
   ((MATCH_ ## insn) | ((rd) << OP_SH_RD) | ((rs1) << OP_SH_RS1) | ((rs2) << OP_SH_RS2))
@@ -320,6 +356,19 @@ static inline unsigned int riscv_insn_length (insn_t insn)
 #define OP_SH_FUNCT7		25
 #define OP_MASK_FUNCT2		0x3
 #define OP_SH_FUNCT2		25
+
+#ifdef ESPERANTO_ENCODING_H
+#define OP_MASK_GDIMM		0x6007
+#define OP_SH_GDIMM		12
+#define OP_MASK_FMV_IMM		0x7
+#define OP_SH_FMV_IMM		20
+#define OP_MASK_FMVM_IMM	0x1f07
+#define OP_SH_FMVM_IMM		12
+#define OP_MASK_FRI_IMM		0xf9f
+#define OP_SH_FRI_IMM		20
+#define OP_MASK_MPCR_IMM	0x63
+#define OP_SH_MPCR_IMM		18
+#endif
 
 /* RVC fields.  */
 
@@ -441,6 +490,9 @@ static inline unsigned int riscv_insn_length (insn_t insn)
 
 #define NGPR 32
 #define NFPR 32
+#ifdef ESPERANTO_ENCODING_H
+#define NMPR 8
+#endif
 
 /* These fake label defines are use by both the assembler, and
    libopcodes.  The assembler uses this when it needs to generate a fake
@@ -675,6 +727,9 @@ struct riscv_opcode
 #define INSN_4_BYTE		0x00000030
 #define INSN_8_BYTE		0x00000040
 #define INSN_16_BYTE		0x00000050
+#ifdef ESPERANTO_ENCODING_H
+#define INSN_32_BYTE		0x00000060
+#endif
 
 /* Instruction is actually a macro.  It should be ignored by the
    disassembler, and requires special treatment by the assembler.  */
@@ -714,6 +769,10 @@ extern const char riscv_gpr_names_numeric[NGPR][NRC];
 extern const char riscv_gpr_names_abi[NGPR][NRC];
 extern const char riscv_fpr_names_numeric[NFPR][NRC];
 extern const char riscv_fpr_names_abi[NFPR][NRC];
+#ifdef ESPERANTO_ENCODING_H
+extern const char riscv_mpr_names_numeric[NMPR][NRC];
+extern const char riscv_mpr_names_abi[NMPR][NRC];
+#endif
 extern const char * const riscv_rm[8];
 extern const char * const riscv_pred_succ[16];
 extern const char riscv_vecr_names_numeric[NVECR][NRC];
