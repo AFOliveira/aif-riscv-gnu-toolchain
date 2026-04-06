@@ -33,16 +33,10 @@ static inline unsigned int riscv_insn_length (insn_t insn)
     return 2;
   if ((insn & 0x1f) != 0x1f) /* 32-bit instructions.  */
     return 4;
-#ifdef ESPERANTO_ENCODING_H
-  /* 32-bit Esperanto extensions are in the 48-bit/64-bit space */
-  if ((insn & 0x3f) == 0x1f || (insn & 0x7f) == 0x3f)
-    return 4;
-#else
   if ((insn & 0x3f) == 0x1f) /* 48-bit instructions.  */
     return 6;
   if ((insn & 0x7f) == 0x3f) /* 64-bit instructions.  */
     return 8;
-#endif
   /* 80- ... 176-bit instructions.  */
   if ((insn & 0x7f) == 0x7f && (insn & 0x7000) != 0x7000)
     return 10 + ((insn >> 11) & 0xe);

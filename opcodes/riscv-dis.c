@@ -987,7 +987,7 @@ riscv_disassemble_insn (bfd_vma memaddr,
   static bool init = false;
   static const struct riscv_opcode *riscv_hash[OP_MASK_OP + 1];
   struct riscv_private_data *pd = info->private_data;
-  int insnlen, i;
+  int insnlen, i, passes, pass;
   bool printed;
 
 #define OP_HASH_IDX(i) ((i) & (riscv_insn_length (i) == 2 ? 0x3 : OP_MASK_OP))
@@ -1003,11 +1003,16 @@ riscv_disassemble_insn (bfd_vma memaddr,
     }
 
   insnlen = riscv_insn_length (word);
+  /* If the encoding indicates 48-bit or longer, first attempt decoding
+     using only non-32-bit opcode table entries for genuine long
+     instructions.  If that fails, retry with 32-bit entries to support
+     vendor extensions that use 32-bit encodings in the reserved opcode
+     space.  */
+  passes = insnlen > 4 ? 2 : 1;
 
   /* RISC-V instructions are always little-endian.  */
   info->endian_code = BFD_ENDIAN_LITTLE;
 
-  info->bytes_per_chunk = insnlen % 4 == 0 ? 4 : 2;
   info->bytes_per_line = 8;
   /* We don't support constant pools, so this must be code.  */
   info->display_endian = info->endian_code;
@@ -1018,9 +1023,15 @@ riscv_disassemble_insn (bfd_vma memaddr,
   info->target = 0;
   info->target2 = 0;
 
-  op = riscv_hash[OP_HASH_IDX (word)];
-  if (op != NULL)
+  for (pass = 0; pass < passes; pass++)
     {
+      int pass_insnlen = (insnlen > 4 && pass == 1) ? 4 : insnlen;
+      info->bytes_per_chunk = pass_insnlen % 4 == 0 ? 4 : 2;
+
+      op = riscv_hash[OP_HASH_IDX (word)];
+      if (op == NULL)
+	continue;
+
       /* If XLEN is not known, get its value from the ELF class.  */
       if (pd->xlen != 0)
 	;
@@ -1043,6 +1054,15 @@ riscv_disassemble_insn (bfd_vma memaddr,
 
       for (; op->name; op++)
 	{
+	  bool op_is_32 = !(op->match >> 32) && !(op->mask >> 32);
+	  if (insnlen > 4)
+	    {
+	      if (pass == 0 && op_is_32)
+		continue;
+	      if (pass == 1 && !op_is_32)
+		continue;
+	    }
+
 	  /* Ignore macro insns.  */
 	  if (op->pinfo == INSN_MACRO)
 	    continue;
@@ -1103,10 +1123,11 @@ riscv_disassemble_insn (bfd_vma memaddr,
 	      info->data_size = 1 << (size - 1);
 	    }
 
-	  return insnlen;
+	  return pass_insnlen;
 	}
     }
 
+  info->bytes_per_chunk = insnlen % 4 == 0 ? 4 : 2;
   /* We did not find a match, so just print the instruction bits in
      the shape of an assembler .insn directive.  */
   info->insn_type = dis_noninsn;
@@ -1546,6 +1567,7 @@ print_insn_riscv (bfd_vma memaddr, struct disassemble_info *info)
   bfd_byte packet[RISCV_MAX_INSN_LEN];
   insn_t insn = 0;
   bfd_vma dump_size, bytes_fetched;
+  bfd_vma full_insn_size = 0;
   int status;
   enum riscv_seg_mstate mstate;
   int (*riscv_disassembler) (bfd_vma, insn_t, const bfd_byte *,
@@ -1577,6 +1599,7 @@ print_insn_riscv (bfd_vma memaddr, struct disassemble_info *info)
     }
   else
     {
+      memset (packet, 0, sizeof (packet));
       /* Get the first 2-bytes to check the lenghth of instruction.  */
       bytes_fetched = fetch_insn (memaddr, packet, 2, info, &status);
       if (status != 0)
@@ -1594,7 +1617,8 @@ print_insn_riscv (bfd_vma memaddr, struct disassemble_info *info)
 	  goto print;
        }
       insn = (insn_t) bfd_getl16 (packet);
-      dump_size = riscv_insn_length (insn);
+      full_insn_size = riscv_insn_length (insn);
+      dump_size = full_insn_size;
       riscv_disassembler = riscv_disassemble_insn;
     }
 
@@ -1607,9 +1631,18 @@ print_insn_riscv (bfd_vma memaddr, struct disassemble_info *info)
     }
   else if (bytes_fetched != dump_size)
     {
-      dump_size = bytes_fetched;
-      info->bytes_per_chunk = dump_size;
-      riscv_disassembler = riscv_disassemble_data;
+      /* For encodings that indicate a long instruction but only have
+	 4 bytes available at the end of a section, still attempt
+	 instruction decode to preserve 32-bit vendor instructions
+	 in reserved opcode space.  */
+      if (!(riscv_disassembler == riscv_disassemble_insn
+	    && full_insn_size > 4
+	    && bytes_fetched == 4))
+	{
+	  dump_size = bytes_fetched;
+	  info->bytes_per_chunk = dump_size;
+	  riscv_disassembler = riscv_disassemble_data;
+	}
     }
 
  print:

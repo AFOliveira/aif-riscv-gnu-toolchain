@@ -741,7 +741,16 @@ riscv_target_format (void)
 static inline unsigned int
 insn_length (const struct riscv_cl_insn *insn)
 {
-  return riscv_insn_length (insn->insn_opcode);
+  unsigned int len = riscv_insn_length (insn->insn_opcode);
+  /* A vendor extension may use non-conforming 32-bit encodings in the
+     reserved 48/64-bit opcode space.  If the opcode table entry fits
+     entirely within 32 bits, trust the table over the raw encoding.  */
+  if (len > 4
+      && insn->insn_mo->mask != 0
+      && !(insn->insn_mo->match >> 32)
+      && !(insn->insn_mo->mask >> 32))
+    len = 4;
+  return len;
 }
 
 /* Initialise INSN from opcode entry MO.  Leave its position unspecified.  */
@@ -1474,7 +1483,17 @@ validate_riscv_insn (const struct riscv_opcode *opc, int length)
   insn_t required_bits;
 
   if (length == 0)
-    length = riscv_insn_length (opc->match);
+    {
+      length = riscv_insn_length (opc->match);
+      /* A vendor extension may use non-conforming 32-bit encodings
+	 in the reserved 48/64-bit opcode space.  If the opcode table
+	 entry fits entirely within 32 bits, trust the table.  */
+      if (length > 4
+	  && opc->mask != 0
+	  && !(opc->match >> 32)
+	  && !(opc->mask >> 32))
+	length = 4;
+    }
   /* We don't support instructions longer than 64-bits yet.  */
   if (length > 8)
     length = 8;
