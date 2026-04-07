@@ -252,11 +252,13 @@ struct riscv_elf_link_hash_table
 #define riscv_get_insn(bits, ptr)		\
   ((bits) == 16 ? bfd_getl16 (ptr)		\
    : (bits) == 32 ? bfd_getl32 (ptr)		\
+   : (bits) == 48 ? bfd_get_bits ((ptr), 48, false)	\
    : (bits) == 64 ? bfd_getl64 (ptr)		\
    : (abort (), (bfd_vma) - 1))
 #define riscv_put_insn(bits, val, ptr)		\
   ((bits) == 16 ? bfd_putl16 (val, ptr)		\
    : (bits) == 32 ? bfd_putl32 (val, ptr)	\
+   : (bits) == 48 ? bfd_put_bits ((val), (ptr), 48, false)	\
    : (bits) == 64 ? bfd_putl64 (val, ptr)	\
    : (abort (), (void) 0))
 
