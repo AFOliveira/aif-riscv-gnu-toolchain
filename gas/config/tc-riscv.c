@@ -736,13 +736,8 @@ riscv_target_format (void)
     return xlen == 64 ? "elf64-littleriscv" : "elf32-littleriscv";
 }
 
-/* Return the length of instruction INSN.  */
-
-static inline unsigned int
-insn_length (const struct riscv_cl_insn *insn)
-{
-  return riscv_insn_length (insn->insn_opcode);
-}
+/* insn_length is defined later, after the helpers it depends on.  */
+static inline unsigned int insn_length (const struct riscv_cl_insn *insn);
 
 /* Initialise INSN from opcode entry MO.  Leave its position unspecified.  */
 
@@ -1459,34 +1454,26 @@ reglist_lookup (char **s, unsigned *reg_list)
 #define USE_IMM(n, s) \
   (used_bits |= ((insn_t)((1ull<<n)-1) << (s)))
 
-/* For consistency checking, verify that all bits are specified either
-   by the match/mask part of the instruction definition, or by the
-   operand list. The `length` could be the actual instruction length or
-   0 for auto-detection.  */
+static unsigned int
+riscv_used_bits_to_bytes (insn_t used_bits)
+{
+  if ((used_bits >> 16) == 0)
+    return 2;
+  if ((used_bits >> 32) == 0)
+    return 4;
+  if ((used_bits >> 48) == 0)
+    return 6;
+  return 8;
+}
+
+/* Build the bit coverage of OPC from its fixed match/mask bits and
+   operand fields.  */
 
 static bool
-validate_riscv_insn (const struct riscv_opcode *opc, int length)
+riscv_opcode_used_bits (const struct riscv_opcode *opc, insn_t *used_bits_p)
 {
   const char *oparg, *opargStart;
   insn_t used_bits = opc->mask;
-  int insn_width;
-  insn_t required_bits;
-
-  if (length == 0)
-    length = riscv_insn_length (opc->match);
-  /* We don't support instructions longer than 64-bits yet.  */
-  if (length > 8)
-    length = 8;
-  insn_width = 8 * length;
-
-  required_bits = ((insn_t)~0ULL) >> (64 - insn_width);
-
-  if ((used_bits & opc->match) != (opc->match & required_bits))
-    {
-      as_bad (_("internal: bad RISC-V opcode (mask error): %s %s"),
-	      opc->name, opc->args);
-      return false;
-    }
 
   for (oparg = opc->args; *oparg; ++oparg)
     {
@@ -1783,6 +1770,72 @@ validate_riscv_insn (const struct riscv_opcode *opc, int length)
 	  return false;
 	}
     }
+
+  *used_bits_p = used_bits;
+  return true;
+}
+
+static unsigned int
+riscv_opcode_defined_length (const struct riscv_opcode *opc)
+{
+  insn_t used_bits;
+
+  if (opc->mask == 0 || !riscv_opcode_used_bits (opc, &used_bits))
+    return 0;
+
+  return riscv_used_bits_to_bytes (used_bits);
+}
+
+static inline unsigned int
+riscv_resolved_insn_length (insn_t raw_bits, const struct riscv_opcode *opc)
+{
+  unsigned int len = riscv_insn_length (raw_bits);
+  unsigned int opc_len = riscv_opcode_defined_length (opc);
+
+  if (opc_len != 0 && len > opc_len)
+    len = opc_len;
+
+  return len;
+}
+
+/* Return the length of instruction INSN.  */
+
+static inline unsigned int
+insn_length (const struct riscv_cl_insn *insn)
+{
+  return riscv_resolved_insn_length (insn->insn_opcode, insn->insn_mo);
+}
+
+/* For consistency checking, verify that all bits are specified either
+   by the match/mask part of the instruction definition, or by the
+   operand list. The `length` could be the actual instruction length or
+   0 for auto-detection.  */
+
+static bool
+validate_riscv_insn (const struct riscv_opcode *opc, int length)
+{
+  insn_t used_bits;
+  int insn_width;
+  insn_t required_bits;
+
+  if (length == 0)
+    length = riscv_resolved_insn_length (opc->match, opc);
+  /* We don't support instructions longer than 64-bits yet.  */
+  if (length > 8)
+    length = 8;
+  insn_width = 8 * length;
+
+  required_bits = ((insn_t)~0ULL) >> (64 - insn_width);
+
+  if ((opc->mask & opc->match) != (opc->match & required_bits))
+    {
+      as_bad (_("internal: bad RISC-V opcode (mask error): %s %s"),
+	      opc->name, opc->args);
+      return false;
+    }
+
+  if (!riscv_opcode_used_bits (opc, &used_bits))
+    return false;
 
   if (used_bits != required_bits)
     {
