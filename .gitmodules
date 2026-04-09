@@ -3,8 +3,8 @@
 # #1654).
 [submodule "gcc"]
 	path = gcc
-	url = https://github.com/gcc-mirror/gcc.git
-	branch = releases/gcc-15
+	url = https://github.com/AFOliveira/gcc.git
+	branch = xaifet-gcc
 	shallow = true
 [submodule "glibc"]
 	path = glibc
@@ -50,8 +50,8 @@
 	shallow = true
 [submodule "binutils"]
 	path = binutils
-	url = https://github.com/aifoundry-org/binutils-gdb.git
-	branch = et
+	url = https://github.com/AFOliveira/binutils-gdb.git
+	branch = xaifet-v3
 [submodule "gdb"]
 	path = gdb
 	url = https://github.com/aifoundry-org/binutils-gdb.git
