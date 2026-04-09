@@ -1332,6 +1332,8 @@ static struct riscv_implicit_subset riscv_implicit_subsets[] =
   {"svade", "+zicsr", check_implicit_always},
   {"svadu", "+zicsr", check_implicit_always},
   {"svbare", "+zicsr", check_implicit_always},
+
+  {"xaifet", "+f", check_implicit_always},
   {NULL, NULL, NULL}
 };
 
@@ -1636,6 +1638,7 @@ static struct riscv_supported_ext riscv_supported_vendor_x_ext[] =
   {"xmipscmov",		ISA_SPEC_CLASS_DRAFT,	1, 0, 0 },
   {"xmipsexectl",	ISA_SPEC_CLASS_DRAFT,	1, 0, 0 },
   {"xmipslsp",		ISA_SPEC_CLASS_DRAFT,	1, 0, 0 },
+  {"xaifet",		ISA_SPEC_CLASS_DRAFT,	1, 0, 0 },
   {NULL, 0, 0, 0, 0}
 };
 
@@ -3054,6 +3057,8 @@ riscv_multi_subset_supports (riscv_parse_subset_t *rps,
       return riscv_subset_supports (rps, "xmipsexectl");
     case INSN_CLASS_XMIPSLSP:
       return riscv_subset_supports (rps, "xmipslsp");
+    case INSN_CLASS_XAIFET:
+      return riscv_subset_supports (rps, "xaifet");
     default:
       rps->error_handler
         (_("internal: unreachable INSN_CLASS_*"));
@@ -3338,6 +3343,8 @@ riscv_multi_subset_supports_ext (riscv_parse_subset_t *rps,
       return "xtheadzvamo";
     case INSN_CLASS_XSFCEASE:
       return "xsfcease";
+    case INSN_CLASS_XAIFET:
+      return "xaifet";
     default:
       rps->error_handler
         (_("internal: unreachable INSN_CLASS_*"));

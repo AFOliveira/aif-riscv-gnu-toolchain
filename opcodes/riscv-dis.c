@@ -67,6 +67,7 @@ struct riscv_private_data
   /* Register names as used by the disassembler.  */
   const char (*riscv_gpr_names)[NRC];
   const char (*riscv_fpr_names)[NRC];
+  const char (*riscv_mpr_names)[NRC];
   /* If set, disassemble as most general instruction.  */
   bool no_aliases;
   /* If set, disassemble without checking architecture string, just like what
@@ -82,6 +83,8 @@ set_default_riscv_dis_options (struct disassemble_info *info)
   struct riscv_private_data *pd = info->private_data;
   pd->riscv_gpr_names = riscv_gpr_names_abi;
   pd->riscv_fpr_names = riscv_fpr_names_abi;
+  pd->riscv_mpr_names = riscv_mpr_names_numeric;
+
   pd->no_aliases = false;
   pd->all_ext = false;
 }
@@ -99,6 +102,7 @@ parse_riscv_dis_option_without_args (const char *option,
     {
       pd->riscv_gpr_names = riscv_gpr_names_numeric;
       pd->riscv_fpr_names = riscv_fpr_names_numeric;
+      pd->riscv_mpr_names = riscv_mpr_names_numeric;
     }
   else if (strcmp (option, "max") == 0)
     pd->all_ext = true;
@@ -915,6 +919,35 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 		  break;
 		default:
 		  goto undefined_modifier;
+		}
+	      break;
+	    case 'e': /* Vendor-specific (XAIFET) operands. */
+	      switch (*++oparg)
+		{
+		case 'b':
+		  print (info->stream, dis_style_immediate, "0x%x", (int)EXTRACT_OPERAND(FMV_IMM, l));
+		  break;
+		case 'f':
+		  print (info->stream, dis_style_immediate, "0x%lx", (unsigned long)EXTRACT_FMVMTYPE_IMM(l));
+		  break;
+		case 'g':
+		  print (info->stream, dis_style_immediate, "0x%x", (int)EXTRACT_GDTYPE_IMM(l));
+		  break;
+		case 'y':
+		  print (info->stream, dis_style_immediate, "0x%x", (int)EXTRACT_FRITYPE_IMM(l));
+		  break;
+		case 'Y':
+		  print (info->stream, dis_style_immediate, "0x%x", (int)EXTRACT_MPCRTYPE_IMM(l));
+		  break;
+		case 'M':
+		  print (info->stream, dis_style_register, "%s", pd->riscv_mpr_names[rd]);
+		  break;
+		case 'N':
+		  print (info->stream, dis_style_register, "%s", pd->riscv_mpr_names[rs1 & 0x7]);
+		  break;
+		case 'n':
+		  print (info->stream, dis_style_register, "%s", pd->riscv_mpr_names[EXTRACT_OPERAND (RS2, l) & 0x7]);
+		  break;
 		}
 	      break;
 	    default:
